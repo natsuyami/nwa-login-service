@@ -18,7 +18,7 @@ public class NwaLoginController {
   private static final Logger LOGGER = LoggerFactory.getLogger(NwaLoginController.class);
 
   @Autowired
-  NwaLoginService nwaLoginService;
+  private NwaLoginService nwaLoginService;
 
   @PostMapping
   @ApiOperation(value = "encrypt details, ecrpytion mode used in contents", response = String.class)
