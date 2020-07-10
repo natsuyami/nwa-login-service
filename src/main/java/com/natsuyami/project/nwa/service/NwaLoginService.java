@@ -6,7 +6,9 @@ import com.natsuyami.project.nwa.common.encrypt.NwaContentEncyption;
 import com.natsuyami.project.nwa.common.encrypt.NwaPasswordEncrypt;
 import com.natsuyami.project.nwa.common.http.NwaRestTemplate;
 import com.natsuyami.project.nwa.config.dto.NwaLoginCredentialDto;
-import java.util.Base64;
+import com.natsuyami.project.nwa.model.NwaUserModel;
+import com.natsuyami.project.nwa.repository.NwaUserRepository;
+import io.netty.util.internal.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,17 +33,32 @@ public class NwaLoginService {
   @Value("${keycloak.credentials.secret}")
   private String clientSecret;
 
+  @Autowired
   private NwaRestTemplate nwaRestTemplate;
 
+  @Autowired
+  private NwaUserRepository nwaUserRepository;
+
   public NwaTokenDto login(NwaLoginCredentialDto credentialDto) throws Exception {
+    LOGGER.info("Initialized login with credentials username={{}}, passcode={{}}", credentialDto.getUsername(), credentialDto.getPasscode());
 
     credentialDto.setUsername(NwaContentEncyption.decrypt(credentialDto.getUsername(), privateKey));
     credentialDto.setPasscode(NwaContentEncyption.decrypt(credentialDto.getPasscode(), privateKey));
-    credentialDto.setPassword(NwaContentEncyption.decrypt(credentialDto.getPassword(), privateKey));
 
-    String[] encryptedPass = NwaPasswordEncrypt.originalEncryption(credentialDto.getPassword(),
+    String[] hashVal = NwaPasswordEncrypt.originalEncryption("",
             credentialDto.getPasscode());
-    BodyInserters.FormInserter bodyParam = nwaRestTemplate.createToken(clientId, clientSecret, credentialDto.getUsername(), encryptedPass[0].concat(".").concat(encryptedPass[1]));
+
+    NwaUserModel userModel = nwaUserRepository.findByUsername(credentialDto.getUsername());
+    String password = NwaPasswordEncrypt.decrypt(hashVal[1], userModel.getPassphrase());
+
+    if (StringUtil.isNullOrEmpty(password)) {
+      throw new Exception("Incorrect Password and Passcode");
+    }
+
+    String kcPass = password.concat(".").concat(hashVal[1]);
+    //incorrect validation of password, requires to get password from database to get secret/salt
+    LOGGER.info("Create request data for clientId={{}}, clientSecret={{}}, username={{}}, password={{}}", clientId, clientSecret, credentialDto.getUsername(), kcPass);
+    BodyInserters.FormInserter bodyParam = nwaRestTemplate.kcTokenCred(clientId, clientSecret, credentialDto.getUsername(), kcPass);
 
     NwaTokenDto token = nwaRestTemplate.post("http://localhost:8080/auth/realms/NWASpringBoot/protocol/openid-connect/token", bodyParam, NwaContentType.URL_ENCODED, null, NwaTokenDto.class);
 
